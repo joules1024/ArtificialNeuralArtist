@@ -1,0 +1,5 @@
+{
+    "board": "arduino:avr:mega",
+    "port": "/dev/tty.usbserial-840",
+    "sketch": "ANA_4.ino"
+}
