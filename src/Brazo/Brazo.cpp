@@ -10,6 +10,7 @@ Brazo::Brazo(void) : _driver(ENABLE_MOT, DIR1, STEP1, DIR2, STEP2)
   steppers.addStepper(stepper2);
   stepper1.setPinsInverted(true, false, false);
   stepper2.setPinsInverted(true, false, false);
+  _motion = new MotionController(stepper1, stepper2, steppers, limite);
   _isMotorEnabled = false;
 }
 
@@ -19,27 +20,16 @@ void Brazo::desactivarMotores()
   _isMotorEnabled = false;
 }
 
-// Setea la acelercion y velocidad  del motor n
 void Brazo::AVset(int stepper, long aceleracion, long velocidad)
 {
-  if (stepper == 1)
-  {
-    stepper1.setMaxSpeed(velocidad);
-    stepper1.setAcceleration(aceleracion);
-  }
-  if (stepper == 2)
-  {
-    stepper2.setMaxSpeed(velocidad);
-    stepper2.setAcceleration(aceleracion);
-  }
+  _motion->setAccelVelocity(stepper, aceleracion, velocidad);
 }
-// Devuelve la posicion actual del motor n
 void Brazo::printStatus()
 {
   Serial.print("M1: ");
-  Serial.println(currentPos(1));
+  Serial.println(_motion->getCurrentPosition(1));
   Serial.print("M2: ");
-  Serial.println(currentPos(2));
+  Serial.println(_motion->getCurrentPosition(2));
 }
 
 // =====================================================
@@ -57,8 +47,8 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
   incY = (incY * resize) / 100;
 
   // posiciones actuales
-  const long pos1 = currentPos(1);
-  const long pos2 = currentPos(2);
+  const long pos1 = _motion->getCurrentPosition(1);
+  const long pos2 = _motion->getCurrentPosition(2);
 
   // aceleracion y velocidad aleatoria
   long UincX, UincY;
@@ -92,32 +82,32 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      *   1) SOLO MOTOR 1
      * =================================================== */
     case MODO_M1_SOLO:
-      _moverMotor(1, incX);
+      _motion->moveMotor(1, incX);
       break;
 
     /* ===================================================
      *   2) SOLO MOTOR 2
      * =================================================== */
     case MODO_M2_SOLO:
-      _moverMotor(2, incY);
+      _motion->moveMotor(2, incY);
       break;
 
     /* ===================================================
      *   3) M1 → luego M2
      * =================================================== */
     case MODO_M1_LUEGO_M2:
-      _moverMotor(1, incX);
+      _motion->moveMotor(1, incX);
       delay(100);
-      _moverMotor(2, incY);
+      _motion->moveMotor(2, incY);
       break;
 
     /* ===================================================
      *   4) M2 → luego M1
      * =================================================== */
     case MODO_M2_LUEGO_M1:
-      _moverMotor(2, incY);
+      _motion->moveMotor(2, incY);
       delay(100);
-      _moverMotor(1, incX);
+      _motion->moveMotor(1, incX);
       break;
 
     /* ===================================================
@@ -128,38 +118,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
       AVset(1, A1 / 4, V1 / 4);
       AVset(2, A2 / 4, V2 / 4);
 
-      _positions[0] = pos1 + incX;
-      _positions[1] = pos2 + incY;
-
-      int valid = _getValidMode(_positions[0], _positions[1]);
-
-      if (valid == 5)
-      {
-        steppers.moveTo(_positions);
-
-        do
-        {
-          if (limite.sw3() == 1)
-          {
-            stepper1.stop();
-            stepper2.stop();
-            printStatus();
-          }
-        } while (steppers.run() && limite.isInside(2, currentPos(1), currentPos(2)) &&
-                 limite.isInside(1, currentPos(1), currentPos(2)));
-      }
-      else if (valid == 3)
-      {
-        _moverMotor(1, incX);
-        delay(100);
-        _moverMotor(2, incY);
-      }
-      else if (valid == 4)
-      {
-        _moverMotor(2, incY);
-        delay(100);
-        _moverMotor(1, incX);
-      }
+      _motion->moveSimultaneous(incX, incY, _positions);
 
       if (info)
       {
@@ -175,55 +134,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      * =================================================== */
     case MODO_PINTAR_HORIZONTAL:
     {
-      long pasos = abs(incX) / (1L << random(3, 6));
-      if (pasos == 0)
-        pasos = 2;
-
-      long Xfinal = pos1 + incX;
-      long Yfinal = pos2 + incY;
-
-      UincX = incX / pasos;
-      UincY = incY / pasos;
-
-      for (int a = 1; a <= pasos; a++)
-      {
-        if (limite.isValidMovement(currentPos(1), currentPos(2), 0, incY, 2, 0))
-        {
-          stepper2.move(incY);
-          do
-          {
-            if (limite.sw3())
-            {
-              stepper2.stop();
-              printStatus();
-            }
-          } while (stepper2.run() && limite.isInside(2, currentPos(1), currentPos(2)));
-          incY = -incY;
-        }
-
-        delay(100);
-
-        if (limite.isValidMovement(currentPos(1), currentPos(2), UincX, 0, 1, 0))
-        {
-          stepper1.move(UincX);
-          do
-          {
-            if (limite.sw3())
-            {
-              stepper1.stop();
-              printStatus();
-            }
-          } while (stepper1.run() && limite.isInside(1, currentPos(1), currentPos(2)));
-        }
-
-        delay(100);
-      }
-
-      if (currentPos(1) != Xfinal || currentPos(2) != Yfinal)
-      {
-        _moverAbsoluto(Xfinal, Yfinal);
-        Serial.print("*");
-      }
+      _motion->movePaint(incX, incY, true);
       break;
     }
 
@@ -232,54 +143,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      * =================================================== */
     case MODO_PINTAR_VERTICAL:
     {
-      long Xfinal = pos1 + incX;
-      long Yfinal = pos2 + incY;
-      long pasos = abs(incY) / (1L << random(3, 6));
-      if (pasos == 0)
-        pasos = 2;
-
-      UincX = incX / pasos;
-      UincY = incY / pasos;
-
-      for (int a = 1; a <= pasos; a++)
-      {
-        if (limite.isValidMovement(currentPos(1), currentPos(2), incX, 0, 1, 0))
-        {
-          stepper1.move(incX);
-          do
-          {
-            if (limite.sw3())
-            {
-              stepper1.stop();
-              printStatus();
-            }
-          } while (stepper1.run() && limite.isInside(1, currentPos(1), currentPos(2)));
-          incX = -incX;
-        }
-
-        delay(100);
-
-        if (limite.isValidMovement(currentPos(1), currentPos(2), 0, UincY, 2, 0))
-        {
-          stepper2.move(UincY);
-          do
-          {
-            if (limite.sw3())
-            {
-              stepper2.stop();
-              printStatus();
-            }
-          } while (stepper2.run() && limite.isInside(2, currentPos(1), currentPos(2)));
-        }
-
-        delay(100);
-      }
-
-      if (currentPos(1) != Xfinal || currentPos(2) != Yfinal)
-      {
-        _moverAbsoluto(Xfinal, Yfinal);
-        Serial.print("*");
-      }
+      _motion->movePaint(incX, incY, false);
       break;
     }
 
@@ -309,50 +173,12 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
       AVset(1, A1, V1);
       AVset(2, A2, V2);
 
-      int cont1 = 0;
-      int cont2 = 0;
-      int cont = 0;
-      bool tocoLimitesExtremos = false;
-
-      if (limite.isValidMovement(currentPos(1), currentPos(2), incX, incY, 5, 0))
-      {
-        stepper1.move(incX);
-        stepper2.move(incY);
-
-        do
-        {
-          if (cont2 < iteraciones)
-          {
-            stepper2.run();
-            limite.tocoExtremos(); // valido si toco Sw1 o Sw2 para activar _parkAfter
-
-            if (stepper2.distanceToGo() == 0 || limite.antebrazoSW() > 0)
-            {
-              incY = -incY;
-              stepper2.move(incY);
-              cont2++;
-            }
-          }
-
-          if (cont1 < iteraciones)
-          {
-            stepper1.run();
-            limite.tocoExtremos(); // valido si toco Sw1 o Sw2 para activar _parkAfter
-            if (stepper1.distanceToGo() == 0 || limite.antebrazoSW() > 0)
-            {
-              incX = -incX;
-              stepper1.move(incX);
-              cont1++;
-            }
-          }
-
-        } while ((cont1 + cont2) < iteraciones * 2);
-      }
+      _motion->moveOscillating(incX, incY, iteraciones);
 
       if (info)
       {
-        Serial.print("\t ITERACION  ");
-        Serial.println(cont);
+        Serial.print("\t ITERACIONES: ");
+        Serial.println(iteraciones);
       }
       break;
     }
@@ -362,39 +188,15 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      * =================================================== */
     case MODO_CIRCULO:
     {
-      A1 = random(AVMIN, AVMAX);
-      V1 = random(AVMIN, AVMAX);
-      A2 = A1 = 1000;
-      V2 = V1 = 1000;
+      A1 = 1000;
+      V1 = 1000;
+      A2 = 1000;
+      V2 = 1000;
       AVset(1, A1, V1);
       AVset(2, A2, V2);
 
-      if (limite.isValidMovement(currentPos(1), currentPos(2), incX, incY, 5, 0))
-      {
-        stepper1.move(50);
-        stepper2.move(50);
-
-        long circleIndex = 50;
-
-        for (long i = 0; i < circleIndex * 2; i++)
-        {
-          Serial.println(F("PasoX"));
-          stepper2.run();
-          if (stepper2.distanceToGo() == 0 || limite.antebrazoSW() > 0)
-          {
-            incY = -incY;
-            stepper2.move(incY);
-          }
-
-          Serial.println(F("PasoY"));
-          stepper1.run();
-          if (stepper1.distanceToGo() == 0 || limite.antebrazoSW() > 0)
-          {
-            incX = -incX;
-            stepper1.move(incX);
-          }
-        }
-      }
+      const int circleIterations = 50;
+      _motion->moveOscillating(50, 50, circleIterations);
       break;
     }
 
@@ -436,154 +238,15 @@ void Brazo::_DesactivarMotores(unsigned long tiempo)
   }
 }
 
-// =====================================================
-// Mueve el motor si el isValidMovement se lo permite
-void Brazo::_moverMotor(int motor, long inc)
-{
-  digitalWrite(ENABLE_MOT, LOW); // Habilito motores
-  if (motor == 1)
-  {
-    if (limite.isValidMovement(currentPos(1), currentPos(2), inc, 0, 1, 2))
-    {
-      stepper1.move(inc);
 
-      do
-      {
-        if (limite.sw3() == 1)
-        {
-          stepper1.stop();
-          printStatus();
-        }
 
-      } while (stepper1.run() and limite.isInside(1, currentPos(1), currentPos(2)));
-    }
-  }
-  if (motor == 2)
-  {
-    if (limite.isValidMovement(currentPos(1), currentPos(2), 0, inc, 2, 2))
-    {
 
-      stepper2.move(inc);
-      do
-      {
-        if (limite.sw3() == 1)
-        {
-          printStatus();
-          stepper2.stop();
-        }
 
-      } while (stepper2.run() and limite.isInside(2, currentPos(1), currentPos(2)));
-    }
-  }
-}
-
-// =====================================================
-// Modos validos de movimiento desde pos actual hacia posXY (absoluto) devuelve 0,3,4,5
-int Brazo::_getValidMode(long posX, long posY)
-{
-  long incX = posX - currentPos(1);
-  long incY = posY - currentPos(2);
-  int outVal = 0;
-
-  // Primro X y luego Y
-  if (limite.isValidMovement(currentPos(1), currentPos(2), incX, 0, 1, 1) and
-      limite.isValidMovement(posX, currentPos(2), 0, incY, 2, 1))
-  {
-
-    outVal = 3; // modo 3 primero incX y luego incY
-  }
-  // Priemro Y y luego X
-  if (limite.isValidMovement(currentPos(1), currentPos(2), 0, incY, 2, 1) and
-      limite.isValidMovement(currentPos(1), posY, incX, 0, 1, 1))
-  {
-
-    outVal = outVal + 4;
-  }
-
-  if (outVal == 7)
-  {
-    outVal = 5;
-  }
-  return outVal;
-}
-
-// =====================================================
-// Usado por ej en funcion para cerrar dibujos modos 3 y 4
-void Brazo::_moverAbsoluto(long posX, long posY)
-
-{
-  long IncX = posX - currentPos(1);
-  long IncY = posY - currentPos(2);
-  int mode = _getValidMode(posX, posY);
-
-  if (mode == 3 or mode == 5)
-  {
-    _moverMotor(1, IncX);
-    delay(100);
-    _moverMotor(2, IncY);
-  }
-  else if (mode == 4)
-  {
-    _moverMotor(2, IncY);
-    delay(100);
-    _moverMotor(1, IncX);
-  }
-}
-
-// =====================================================
-// Devuelve true si el motor aun tiene recorrido pendiente
-bool Brazo::_checkMotor(int motor)
-
-{
-  bool result = false;
-  if (motor == 1)
-  {
-    if (abs(stepper1.distanceToGo()) > 0)
-      result = true;
-  }
-  if (motor == 2)
-  {
-    if (abs(stepper2.distanceToGo()) > 0)
-      result = true;
-  }
-  return result;
-}
-
-// =====================================================
-// Devuelve la posicion actual del motor n
 long Brazo::currentPos(int motor)
-
 {
-  long result;
-  if (motor == 1)
-  {
-    result = stepper1.currentPosition();
-  }
-  if (motor == 2)
-  {
-    result = stepper2.currentPosition();
-  }
-
-  return result;
+  return _motion->getCurrentPosition(motor);
 }
 
-//=====================================================
-// Setea la posicion del motor seleccionado
-void Brazo::_setCurrentPos(int motor, long pos)
-
-{
-  if (motor == 1)
-  {
-    stepper1.setCurrentPosition(pos);
-    Serial.println(stepper1.currentPosition());
-  }
-
-  if (motor == 2)
-  {
-    stepper2.setCurrentPosition(pos);
-    Serial.println(stepper2.currentPosition());
-  }
-}
 
 bool Brazo::getTocoLimiteExterno()
 {
@@ -673,8 +336,8 @@ void Brazo::goHome()
   Serial.print(".");
 
   // Establecer posición home
-  stepper1.setCurrentPosition(0);
-  stepper2.setCurrentPosition(0);
+  _motion->setCurrentPosition(1, 0);
+  _motion->setCurrentPosition(2, 0);
   delay(500);
   desactivarMotores();
   Serial.println("Complete");
