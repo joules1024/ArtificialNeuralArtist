@@ -39,8 +39,9 @@ private:
   AccelStepper stepper2 = AccelStepper(motorInterfaceType, STEP2, DIR2);
   MultiStepper steppers;
   Limites limite;
-  MotionController *_motion;
-  HomingController *_homing;
+
+  MotionController motion;
+  HomingController homing; // objeto directo
 };
 
 #endif

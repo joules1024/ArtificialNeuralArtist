@@ -3,15 +3,19 @@
 // =====================================================
 // CONSTRUCTOR Y CONFIGURACIÓN
 // =====================================================
-Brazo::Brazo(void) : _driver(ENABLE_MOT, DIR1, STEP1, DIR2, STEP2)
+Brazo::Brazo(void)
+    : _driver(ENABLE_MOT, DIR1, STEP1, DIR2, STEP2), stepper1(motorInterfaceType, STEP1, DIR1),
+      stepper2(motorInterfaceType, STEP2, DIR2), steppers(), limite(), motion(stepper1, stepper2, steppers, limite),
+      homing(_driver, limite, &motion)
 {
   _driver.begin();
+
   steppers.addStepper(stepper1);
   steppers.addStepper(stepper2);
+
   stepper1.setPinsInverted(true, false, false);
   stepper2.setPinsInverted(true, false, false);
-  _motion = new MotionController(stepper1, stepper2, steppers, limite);
-  _homing = new HomingController(_driver, limite, _motion);
+
   _isMotorEnabled = false;
 }
 
@@ -23,14 +27,14 @@ void Brazo::desactivarMotores()
 
 void Brazo::AVset(int stepper, long aceleracion, long velocidad)
 {
-  _motion->setAccelVelocity(stepper, aceleracion, velocidad);
+  motion.setAccelVelocity(stepper, aceleracion, velocidad);
 }
 void Brazo::printStatus()
 {
-  Serial.print("M1: ");
-  Serial.println(_motion->getCurrentPosition(1));
-  Serial.print("M2: ");
-  Serial.println(_motion->getCurrentPosition(2));
+  Serial.print(F("M1: "));
+  Serial.println(motion.getCurrentPosition(1));
+  Serial.print(F("M2: "));
+  Serial.println(motion.getCurrentPosition(2));
 }
 
 // =====================================================
@@ -48,8 +52,8 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
   incY = (incY * resize) / 100;
 
   // posiciones actuales
-  const long pos1 = _motion->getCurrentPosition(1);
-  const long pos2 = _motion->getCurrentPosition(2);
+  const long pos1 = motion.getCurrentPosition(1);
+  const long pos2 = motion.getCurrentPosition(2);
 
   // aceleracion y velocidad aleatoria
   long UincX, UincY;
@@ -83,32 +87,32 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      *   1) SOLO MOTOR 1
      * =================================================== */
     case MODO_M1_SOLO:
-      _motion->moveMotor(1, incX);
+      motion.moveMotor(1, incX);
       break;
 
     /* ===================================================
      *   2) SOLO MOTOR 2
      * =================================================== */
     case MODO_M2_SOLO:
-      _motion->moveMotor(2, incY);
+      motion.moveMotor(2, incY);
       break;
 
     /* ===================================================
      *   3) M1 → luego M2
      * =================================================== */
     case MODO_M1_LUEGO_M2:
-      _motion->moveMotor(1, incX);
+      motion.moveMotor(1, incX);
       delay(100);
-      _motion->moveMotor(2, incY);
+      motion.moveMotor(2, incY);
       break;
 
     /* ===================================================
      *   4) M2 → luego M1
      * =================================================== */
     case MODO_M2_LUEGO_M1:
-      _motion->moveMotor(2, incY);
+      motion.moveMotor(2, incY);
       delay(100);
-      _motion->moveMotor(1, incX);
+      motion.moveMotor(1, incX);
       break;
 
     /* ===================================================
@@ -119,7 +123,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
       AVset(1, A1 / 4, V1 / 4);
       AVset(2, A2 / 4, V2 / 4);
 
-      _motion->moveSimultaneous(incX, incY, _positions);
+      motion.moveSimultaneous(incX, incY, _positions);
 
       if (info)
       {
@@ -135,7 +139,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      * =================================================== */
     case MODO_PINTAR_HORIZONTAL:
     {
-      _motion->movePaint(incX, incY, true);
+      motion.movePaint(incX, incY, true);
       break;
     }
 
@@ -144,7 +148,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
      * =================================================== */
     case MODO_PINTAR_VERTICAL:
     {
-      _motion->movePaint(incX, incY, false);
+      motion.movePaint(incX, incY, false);
       break;
     }
 
@@ -174,7 +178,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
       AVset(1, A1, V1);
       AVset(2, A2, V2);
 
-      _motion->moveOscillating(incX, incY, iteraciones);
+      motion.moveOscillating(incX, incY, iteraciones);
 
       if (info)
       {
@@ -197,7 +201,7 @@ bool Brazo::mover(long incX, long incY, long resize, int modo, bool info)
       AVset(2, A2, V2);
 
       const int circleIterations = 50;
-      _motion->moveOscillating(50, 50, circleIterations);
+      motion.moveOscillating(50, 50, circleIterations);
       break;
     }
 
@@ -241,7 +245,7 @@ void Brazo::_DesactivarMotores(unsigned long tiempo)
 
 long Brazo::currentPos(int motor)
 {
-  return _motion->getCurrentPosition(motor);
+  return motion.getCurrentPosition(motor);
 }
 
 bool Brazo::getTocoLimiteExterno()
@@ -253,5 +257,5 @@ bool Brazo::getTocoLimiteExterno()
 // Estaciona el brazo suavemente
 void Brazo::goHome()
 {
-  _homing->goHome();
+  homing.goHome();
 }
