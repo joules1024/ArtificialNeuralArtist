@@ -11,6 +11,7 @@ Brazo::Brazo(void) : _driver(ENABLE_MOT, DIR1, STEP1, DIR2, STEP2)
   stepper1.setPinsInverted(true, false, false);
   stepper2.setPinsInverted(true, false, false);
   _motion = new MotionController(stepper1, stepper2, steppers, limite);
+  _homing = new HomingController(_driver, limite, _motion);
   _isMotorEnabled = false;
 }
 
@@ -238,15 +239,10 @@ void Brazo::_DesactivarMotores(unsigned long tiempo)
   }
 }
 
-
-
-
-
 long Brazo::currentPos(int motor)
 {
   return _motion->getCurrentPosition(motor);
 }
-
 
 bool Brazo::getTocoLimiteExterno()
 {
@@ -257,88 +253,5 @@ bool Brazo::getTocoLimiteExterno()
 // Estaciona el brazo suavemente
 void Brazo::goHome()
 {
-  digitalWrite(ENABLE_MOT, LOW);
-  delay(100);
-  Serial.println("");
-  Serial.print("Homing.... ");
-
-  // Fase 1: Retroceder codo hasta liberar sw3 y sw2
-  while (limite.sw3() == 0 && limite.sw2() == 0)
-  {
-    _driver.backwardStepCodo();
-    delay(2);
-  }
-  delay(100);
-  Serial.print("..");
-
-  // Fase 2: Separar del switch sw3 (50 pasos hacia atrás en hombro)
-  for (int cont = 0; cont < 50; cont++)
-  {
-    _driver.backwardStepHombro();
-    delay(2);
-  }
-
-  // Fase 3: Retroceder hombro hasta liberar sw3 y sw1
-  while (limite.sw3() == 0 && limite.sw1() == 0)
-  {
-    _driver.backwardStepHombro();
-    delay(2);
-  }
-  delay(100);
-  Serial.print("..");
-
-  // Fase 4: Retroceder codo hasta liberar sw2
-  while (limite.sw2() == 0)
-  {
-    _driver.backwardStepCodo();
-    delay(2);
-  }
-  delay(100);
-  Serial.print("..");
-
-  // Fase 5: Retroceder hombro hasta liberar sw1
-  while (limite.sw1() == 0)
-  {
-    _driver.backwardStepHombro();
-    delay(2);
-  }
-
-  // Fase 6: Avanzar hombro hasta soltar sw1
-  while (limite.sw1() > 0)
-  {
-    _driver.forwardStepHombro();
-    delay(5);
-  }
-  Serial.print(".");
-
-  // Fase 7: Avanzar codo hasta soltar sw2
-  while (limite.sw2() > 0)
-  {
-    _driver.forwardStepCodo();
-    delay(5);
-  }
-  Serial.print(".");
-
-  // Fase 8: Avanzar codo hasta tocar sw3
-  while (limite.sw3() == 0)
-  {
-    _driver.forwardStepCodo();
-    delay(5);
-  }
-  Serial.print(".");
-
-  // Fase 9: Avanzar hombro hasta soltar sw3
-  while (limite.sw3() > 0)
-  {
-    _driver.forwardStepHombro();
-    delay(5);
-  }
-  Serial.print(".");
-
-  // Establecer posición home
-  _motion->setCurrentPosition(1, 0);
-  _motion->setCurrentPosition(2, 0);
-  delay(500);
-  desactivarMotores();
-  Serial.println("Complete");
+  _homing->goHome();
 }

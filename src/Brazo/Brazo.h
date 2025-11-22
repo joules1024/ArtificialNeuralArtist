@@ -7,6 +7,7 @@
 #include "Limites.h"
 #include "StepperLowLevel.h"
 #include "MotionController.h"
+#include "HomingController.h"
 #include "../Config/Pinout.h"
 #include "../Config/Constants.h"
 
@@ -39,6 +40,7 @@ private:
   MultiStepper steppers;
   Limites limite;
   MotionController *_motion;
+  HomingController *_homing;
 };
 
 #endif
